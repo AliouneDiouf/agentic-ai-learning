@@ -8,11 +8,11 @@ My learning log for agentic AI engineering.
 
 ## Progress
 - [x] Week 1 – Foundations: first LLM calls, prompt chaining (business area → pain point → solution)
-- [ ] Week 2 – OpenAI Agents SDK
-- [ ] Week 3 – CrewAI
-- [ ] Week 4 – LangGraph
-- [ ] Week 5 – Agent frameworks (Google ADK, A2A)
-- [ ] Week 6 – MCP
+- [x] Week 2 – OpenAI Agents SDK
+- [x] Week 3 – CrewAI
+- [x] Week 4 – LangGraph
+- [x] Week 5 – Agent frameworks (Google ADK, A2A)
+- [x] Week 6 – MCP
 
 ## Projects
 Links to standalone project repositories will be added here.

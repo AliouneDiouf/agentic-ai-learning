@@ -1,6 +1,6 @@
 # Agentic AI Learning
 
-My learning log for agentic AI engineering (Nov–Dec 2026).
+My learning log for agentic AI engineering.
 
 ## Courses
 - AI Engineer Agentic Track (Ed Donner, Udemy)

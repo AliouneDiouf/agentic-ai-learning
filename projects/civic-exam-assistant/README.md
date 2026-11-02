@@ -25,7 +25,7 @@ is not in the document, and can quiz the user one question at a time.
 ## How it works
 
 ```
-Livret du citoyen (PDF) ──pypdf──> text ──> system prompt
+Livret du citoyen (PDF, scanned) ──OCR──> livret.txt ──> system prompt
                                               │
         user message + chat history ──────────┤
                                               ▼
@@ -43,6 +43,23 @@ the API reuse its prompt cache.
 
 1. Download the official PDF and save it as `livret.pdf` in this folder:
    [Livret du citoyen 2026](https://www.immigration.interieur.gouv.fr/sites/dgef/files/medias/documents/2026-07/LIVRET-DU-CITOYEN-2026.pdf)
+
+   The PDF stores its 83 pages as images: `pypdf` extracts fewer than 2,000 characters.
+   Convert it to text with OCR (Poppler and Tesseract with French data), which gives
+   about 150,000 characters with a `--- Page N ---` marker before each page:
+
+   ```bash
+   pdftoppm -r 300 -gray -png livret.pdf page
+   for f in page-*.png; do tesseract "$f" "${f%.png}" -l fra; done
+   python - <<'PY'
+   import re, pathlib
+   files = sorted(pathlib.Path('.').glob('page-*.txt'), key=lambda p: int(re.findall(r'\d+', p.stem)[0]))
+   text = "\n\n".join(f"--- Page {int(re.findall(r'\d+', p.stem)[0])} ---\n{p.read_text(encoding='utf-8').strip()}" for p in files)
+   pathlib.Path('livret.txt').write_text(text, encoding='utf-8')
+   PY
+   ```
+
+   `app.py` reads `livret.txt`, and refuses to start if the text is nearly empty.
 2. Put your key in a `.env` file: `OPENAI_API_KEY=sk-...`
 3. Install and launch:
 

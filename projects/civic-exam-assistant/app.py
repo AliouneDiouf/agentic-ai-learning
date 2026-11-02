@@ -9,24 +9,39 @@ from openai import OpenAI
 from pypdf import PdfReader
 
 MODEL = "gpt-5.4-mini"
-LIVRET_PATH = Path(__file__).parent / "livret.pdf"
+HERE = Path(__file__).parent
+LIVRET_TXT = HERE / "livret.txt"  # OCR text of the Livret, with page markers
+LIVRET_PDF = HERE / "livret.pdf"
+MIN_CHARS = 20_000  # the Livret runs to about 150,000 characters
 
 load_dotenv(override=True)  # loads OPENAI_API_KEY from .env
 openai = OpenAI()
 
 
-def load_livret(path: Path) -> str:
-    """Extract the text of the Livret du citoyen PDF."""
-    reader = PdfReader(path)
-    text = ""
-    for page in reader.pages:
-        page_text = page.extract_text()
-        if page_text:
-            text += page_text
+def load_livret() -> str:
+    """Return the text of the Livret du citoyen.
+
+    The official PDF stores its pages as images, so pypdf extracts almost nothing.
+    The text therefore comes from livret.txt, produced by OCR (see README).
+    """
+    if LIVRET_TXT.exists():
+        text = LIVRET_TXT.read_text(encoding="utf-8")
+    else:
+        reader = PdfReader(LIVRET_PDF)
+        text = "\n".join(
+            f"--- Page {i} ---\n{page.extract_text() or ''}"
+            for i, page in enumerate(reader.pages, 1)
+        )
+
+    if len(text) < MIN_CHARS:
+        raise SystemExit(
+            f"Only {len(text)} characters of Livret text: the PDF holds images, not text. "
+            "Put the OCR text in livret.txt (see README)."
+        )
     return text
 
 
-livret = load_livret(LIVRET_PATH)
+livret = load_livret()
 
 system_prompt = f"""Tu es un assistant de révision pour l'examen civique français. \
 Tu aides des personnes qui préparent une démarche de naturalisation, de carte de séjour \
@@ -44,7 +59,8 @@ Si la réponse ne figure pas dans le Livret, dis-le clairement, par exemple : \
 ## Comment répondre
 - Commence par la réponse directe, en une ou deux phrases.
 - Ajoute une courte explication pour aider à retenir, pas seulement à répondre.
-- Termine en indiquant la partie du Livret d'où vient l'information.
+- Termine en indiquant la partie du Livret et la page d'où vient l'information \
+(le texte est découpé par des repères « --- Page N --- »).
 - Écris en français simple, avec des phrases courtes. Beaucoup de personnes \
 qui te consultent n'ont pas le français comme langue maternelle.
 - Si la personne écrit dans une autre langue, réponds dans sa langue, \

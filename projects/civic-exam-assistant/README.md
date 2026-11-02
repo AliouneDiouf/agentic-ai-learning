@@ -53,27 +53,31 @@ python app.py
 
 ## Evaluation
 
-`evaluate.py` runs the assistant on the civic exam questions and scores every answer
+`evaluate.py` runs the assistant on the 209 civic exam questions and scores every answer
 with a stronger model acting as a judge (**LLM-as-a-judge**, with structured output).
 
-The question set has no reference answers, so for each question the judge reads the
-Livret and decides whether the Livret covers the question, and whether the answer is
-correct and grounded in it. Each answer falls into one category:
+The question file lists, for each question, one or more correct answers. The judge
+compares the assistant's answer with them, and also checks whether the answer comes
+from the Livret. Each answer falls into one category:
 
 | Category | Meaning |
 |---|---|
-| `correct` | Right answer, supported by the Livret |
-| `incorrect` | The Livret has the answer, the assistant gets it wrong |
+| `correct` | Right answer, taken from the Livret |
+| `correct_outside` | Right answer, but not in the Livret (outside knowledge) |
+| `incorrect` | Wrong answer |
 | `missed` | The Livret has the answer, the assistant says it cannot find it |
-| `refused_ok` | The Livret does not cover the question, and the assistant says so |
-| `hallucination` | The Livret does not cover the question, the assistant answers anyway |
+| `not_in_livret` | The Livret does not cover the question, and the assistant says so |
 
-**Accuracy** is measured on the questions the Livret covers. The report also gives the
-hallucination rate and how much of the exam the Livret covers, overall and by theme.
+The report gives the **accuracy** against the reference answers, the accuracy using the
+Livret only, and how much of the exam the Livret covers, overall and by theme.
+
+The real exam is multiple choice, but the file only lists the right answers, so the
+assistant gets each question without the choices — a harder setting than the exam.
 
 To run it, download the JSON file from
 [data.gouv.fr](https://www.data.gouv.fr/datasets/examen-civique-cr/community-resources)
-(209 questions for the resident card, Licence Ouverte 2.0, source: qcmexamencivique.fr),
+(209 questions in 5 themes for the resident card, with suggested correct answers;
+Licence Ouverte 2.0, source: qcmexamencivique.fr),
 save it as `questions_cr.json` in this folder, then:
 
 ```bash

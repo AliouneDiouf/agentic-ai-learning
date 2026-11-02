@@ -1,8 +1,8 @@
 """Evaluate the civic exam assistant on the official exam questions.
 
-The question file has no reference answers, so a stronger model acts as a judge:
-for each question it reads the Livret du citoyen and the assistant's answer, and
-decides whether the Livret covers the question and whether the answer is right.
+The question file gives, for each question, one or more correct answers.
+A stronger model acts as a judge: it compares the assistant's answer with these
+reference answers and checks that the answer comes from the Livret du citoyen.
 
 Usage:
     python evaluate.py --limit 20          # quick, cheap first run
@@ -22,11 +22,11 @@ from app import chat, livret, openai
 HERE = Path(__file__).parent
 
 CATEGORIES = {
-    "correct": "Bonne réponse, appuyée par le Livret",
-    "incorrect": "Le Livret contient la réponse, mais l'assistant se trompe",
+    "correct": "Bonne réponse, tirée du Livret",
+    "correct_outside": "Bonne réponse, mais absente du Livret (connaissance extérieure)",
+    "incorrect": "Mauvaise réponse",
     "missed": "Le Livret contient la réponse, mais l'assistant dit ne pas la trouver",
-    "refused_ok": "Le Livret ne couvre pas la question, et l'assistant le dit",
-    "hallucination": "Le Livret ne couvre pas la question, mais l'assistant répond quand même",
+    "not_in_livret": "Le Livret ne couvre pas la question, et l'assistant le dit",
     "error": "Erreur pendant l'appel à l'API",
 }
 
@@ -34,7 +34,7 @@ CATEGORIES = {
 class Judgement(BaseModel):
     answer_in_livret: bool
     assistant_answered: bool
-    correct: bool
+    matches_reference: bool
     grounded: bool
     comment: str
 
@@ -42,18 +42,19 @@ class Judgement(BaseModel):
 JUDGE_PROMPT = f"""Tu évalues un assistant de révision pour l'examen civique français. \
 L'assistant doit répondre uniquement à partir du Livret du citoyen ci-dessous.
 
-On te donne une question de l'examen et la réponse de l'assistant. Remplis les champs :
-- answer_in_livret : le Livret contient-il l'information qui permet de répondre à la question ?
+On te donne une question de l'examen, les réponses correctes de référence \
+(une seule suffit) et la réponse de l'assistant. Remplis les champs :
+- answer_in_livret : le Livret contient-il l'information qui permet de répondre correctement ?
 - assistant_answered : l'assistant a-t-il donné une réponse, au lieu de dire que \
 l'information ne figure pas dans le Livret ?
-- correct : la réponse de l'assistant est-elle exacte selon le Livret ? \
-(false s'il n'a pas répondu)
-- grounded : tout ce qu'affirme l'assistant se trouve-t-il dans le Livret, \
-sans information ajoutée de l'extérieur ? (true s'il n'a pas répondu)
-- comment : une phrase qui justifie ton jugement, en citant le passage du Livret utile.
+- matches_reference : la réponse de l'assistant correspond-elle à au moins une des \
+réponses de référence, sans affirmation fausse ? (false s'il n'a pas répondu)
+- grounded : ce qu'affirme l'assistant se trouve-t-il dans le Livret, sans information \
+ajoutée de l'extérieur ? (true s'il n'a pas répondu)
+- comment : une phrase qui justifie ton jugement.
 
-Sois strict : une réponse vague, incomplète ou qui ajoute des faits absents du Livret \
-n'est pas correcte.
+Sois strict : une réponse vague, ou qui contient une erreur à côté d'une bonne réponse, \
+ne correspond pas à la référence.
 
 ## Le Livret du citoyen
 {livret}
@@ -61,17 +62,57 @@ n'est pas correcte.
 
 
 def load_questions(path: Path) -> list[dict]:
-    """Load the question file, whether it is a list or a list wrapped in an object."""
-    data = json.loads(path.read_text(encoding="utf-8"))
+    """Load questions as dicts with id, theme, question and reference answers.
+
+    Accepts the data.gouv.fr layout ({"data": [{"theme", "questions": [...]}]})
+    as well as a flat list of questions.
+    """
+    data = json.loads(path.read_text(encoding="utf-8-sig"))
     if isinstance(data, dict):
-        data = next((value for value in data.values() if isinstance(value, list)), [])
-    return [q for q in data if isinstance(q, dict) and q.get("question")]
+        data = data.get("data", [])
+
+    questions = []
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+        if "questions" in item:  # a theme holding its questions
+            theme = item.get("theme", "")
+            for q in item["questions"]:
+                questions.append({**q, "theme": q.get("theme", theme)})
+        elif "question" in item:
+            questions.append(item)
+
+    return [
+        {
+            "id": q.get("id", i),
+            "theme": q.get("theme") or q.get("thematique", ""),
+            "question": q["question"],
+            "references": q.get("suggested_answers", []),
+        }
+        for i, q in enumerate(questions, 1)
+        if q.get("question")
+    ]
 
 
-def judge(question: str, answer: str, model: str) -> Judgement:
+def ask_assistant(question: str) -> str:
+    # The real exam is a multiple-choice test, but the file only lists the right answers,
+    # so the assistant gets the question without the choices.
+    message = (
+        "Question de l'examen civique (les propositions ne sont pas fournies, "
+        f"donne directement la bonne réponse) : {question}"
+    )
+    return chat(message, [])
+
+
+def judge(question: str, references: list[str], answer: str, model: str) -> Judgement:
+    refs = "\n".join(f"- {r}" for r in references) or "- (aucune)"
     messages = [
         {"role": "system", "content": JUDGE_PROMPT},
-        {"role": "user", "content": f"Question : {question}\n\nRéponse de l'assistant : {answer}"},
+        {
+            "role": "user",
+            "content": f"Question : {question}\n\nRéponses de référence :\n{refs}\n\n"
+            f"Réponse de l'assistant : {answer}",
+        },
     ]
     response = openai.chat.completions.parse(
         model=model, messages=messages, response_format=Judgement
@@ -81,10 +122,10 @@ def judge(question: str, answer: str, model: str) -> Judgement:
 
 def categorize(j: Judgement) -> str:
     if j.assistant_answered:
-        if not j.answer_in_livret:
-            return "hallucination"
-        return "correct" if (j.correct and j.grounded) else "incorrect"
-    return "missed" if j.answer_in_livret else "refused_ok"
+        if not j.matches_reference:
+            return "incorrect"
+        return "correct" if j.grounded else "correct_outside"
+    return "missed" if j.answer_in_livret else "not_in_livret"
 
 
 def pct(part: int, whole: int) -> str:
@@ -94,18 +135,17 @@ def pct(part: int, whole: int) -> str:
 def write_report(rows: list[dict], path: Path, judge_model: str) -> str:
     counts = Counter(r["category"] for r in rows)
     total = len(rows)
-    covered = counts["correct"] + counts["incorrect"] + counts["missed"]
+    right = counts["correct"] + counts["correct_outside"]
+    covered = sum(1 for r in rows if r["answer_in_livret"] == "yes")
 
     lines = [
         "# Evaluation report",
         "",
         f"- Questions evaluated: **{total}**",
         f"- Judge model: `{judge_model}`",
-        f"- **Accuracy** (questions the Livret covers): **{pct(counts['correct'], covered)}**"
-        f" ({counts['correct']}/{covered})",
-        f"- Hallucination rate (answers to questions the Livret does not cover): "
-        f"{pct(counts['hallucination'], total)}",
-        f"- Livret coverage of the exam questions: {pct(covered, total)}",
+        f"- **Accuracy**: **{pct(right, total)}** ({right}/{total} answers match the reference)",
+        f"- Accuracy using the Livret only: {pct(counts['correct'], total)}",
+        f"- Questions the Livret covers (judge's view): {pct(covered, total)}",
         "",
         "## Results by category",
         "",
@@ -117,17 +157,11 @@ def write_report(rows: list[dict], path: Path, judge_model: str) -> str:
 
     by_theme = defaultdict(Counter)
     for r in rows:
-        by_theme[r["thematique"] or "—"][r["category"]] += 1
-    lines += [
-        "",
-        "## Accuracy by theme",
-        "",
-        "| Theme | Questions | Accuracy |",
-        "|---|---|---|",
-    ]
+        by_theme[r["theme"] or "—"][r["category"]] += 1
+    lines += ["", "## Accuracy by theme", "", "| Theme | Questions | Accuracy |", "|---|---|---|"]
     for theme, c in sorted(by_theme.items()):
-        theme_covered = c["correct"] + c["incorrect"] + c["missed"]
-        lines.append(f"| {theme} | {sum(c.values())} | {pct(c['correct'], theme_covered)} |")
+        n = sum(c.values())
+        lines.append(f"| {theme} | {n} | {pct(c['correct'] + c['correct_outside'], n)} |")
 
     report = "\n".join(lines) + "\n"
     path.write_text(report, encoding="utf-8")
@@ -141,26 +175,39 @@ def main():
     parser.add_argument("--judge-model", default="gpt-5.4")
     args = parser.parse_args()
 
-    questions = load_questions(args.questions)[: args.limit]
-    rows = []
+    questions = load_questions(args.questions)
+    if not questions:
+        raise SystemExit(f"No questions found in {args.questions}. Check the file format.")
+    if args.limit and args.limit < len(questions):
+        # Spread the sample over the whole file so every theme is represented
+        step = len(questions) // args.limit
+        questions = questions[::step][: args.limit]
 
+    rows = []
     for i, q in enumerate(questions, 1):
         row = {
-            "id": q.get("id", i),
-            "thematique": q.get("thematique", ""),
+            "id": q["id"],
+            "theme": q["theme"],
             "question": q["question"],
+            "references": " | ".join(q["references"]),
         }
         try:
-            answer = chat(q["question"], [])
-            verdict = judge(q["question"], answer, args.judge_model)
-            row.update(answer=answer, category=categorize(verdict), comment=verdict.comment)
+            answer = ask_assistant(q["question"])
+            verdict = judge(q["question"], q["references"], answer, args.judge_model)
+            row.update(
+                answer=answer,
+                category=categorize(verdict),
+                answer_in_livret="yes" if verdict.answer_in_livret else "no",
+                comment=verdict.comment,
+            )
         except Exception as exc:  # keep going: one failed call must not stop the run
-            row.update(answer="", category="error", comment=str(exc))
+            row.update(answer="", category="error", answer_in_livret="", comment=str(exc))
         rows.append(row)
-        print(f"[{i}/{len(questions)}] {row['category']:<13} {q['question'][:70]}")
+        print(f"[{i}/{len(questions)}] {row['category']:<15} {q['question'][:65]}")
 
-    with open(HERE / "eval_results.csv", "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=["id", "thematique", "question", "answer", "category", "comment"])
+    fields = ["id", "theme", "question", "references", "answer", "category", "answer_in_livret", "comment"]
+    with open(HERE / "eval_results.csv", "w", newline="", encoding="utf-8-sig") as f:
+        writer = csv.DictWriter(f, fieldnames=fields)
         writer.writeheader()
         writer.writerows(rows)
 

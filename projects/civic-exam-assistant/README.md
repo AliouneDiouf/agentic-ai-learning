@@ -51,11 +51,43 @@ pip install -r requirements.txt
 python app.py
 ```
 
+## Evaluation
+
+`evaluate.py` runs the assistant on the civic exam questions and scores every answer
+with a stronger model acting as a judge (**LLM-as-a-judge**, with structured output).
+
+The question set has no reference answers, so for each question the judge reads the
+Livret and decides whether the Livret covers the question, and whether the answer is
+correct and grounded in it. Each answer falls into one category:
+
+| Category | Meaning |
+|---|---|
+| `correct` | Right answer, supported by the Livret |
+| `incorrect` | The Livret has the answer, the assistant gets it wrong |
+| `missed` | The Livret has the answer, the assistant says it cannot find it |
+| `refused_ok` | The Livret does not cover the question, and the assistant says so |
+| `hallucination` | The Livret does not cover the question, the assistant answers anyway |
+
+**Accuracy** is measured on the questions the Livret covers. The report also gives the
+hallucination rate and how much of the exam the Livret covers, overall and by theme.
+
+To run it, download the JSON file from
+[data.gouv.fr](https://www.data.gouv.fr/datasets/examen-civique-cr/community-resources)
+(209 questions for the resident card, Licence Ouverte 2.0, source: qcmexamencivique.fr),
+save it as `questions_cr.json` in this folder, then:
+
+```bash
+python evaluate.py --limit 20   # quick first run
+python evaluate.py              # all questions
+```
+
+It writes `eval_report.md` (summary) and `eval_results.csv` (every answer and verdict).
+
+The judge is a model too: check a sample of its verdicts by hand before trusting the score.
+
 ## Next steps
 
-- [ ] Evaluate it on the 209 civic exam questions published on
-  [data.gouv.fr](https://www.data.gouv.fr/datasets/examen-civique-cr/community-resources)
-  and report the accuracy
+- [ ] Run the full evaluation and publish `eval_report.md`
 - [ ] Add the Ministry's thematic sheets (Licence Etalab 2.0) as a second source
 - [ ] Deploy on Hugging Face Spaces
 

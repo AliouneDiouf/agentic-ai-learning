@@ -127,17 +127,34 @@ The judge is a model too: check a sample of its verdicts by hand before trusting
 
 ### Results
 
-| Prompt | Dev (42) | Test (167) |
-|---|---|---|
-| v1 | — | — |
-| v2 | — | — |
+Accuracy (right answers, reference or other valid answer), judge `gpt-5.4`:
 
-*Accuracy: right answers (reference or other valid answer) / questions. Results to come.*
+| Prompt | Dev (42) | Test (167) | Wrong answers (test) |
+|---|---|---|---|
+| v1 | 83.3 % | 83.8 % | 10.2 % |
+| v2 | 83.3 % | **85.6 %** | 9.0 % |
+
+What the numbers say:
+
+- **The assistant answers about 85 % of the exam questions correctly**, without seeing
+  the multiple-choice options.
+- **v2 is not a significant improvement.** Comparing the two prompts question by
+  question on the test set, v2 fixes 5 answers and breaks 2 (exact McNemar test,
+  p = 0.45); on the dev set it fixes 2 and breaks 2. v2 stays the default, but prompt
+  wording has reached a plateau.
+- **The Livret does not cover everything the exam asks.** By the judge's count it holds
+  the answer to about 89 % of the test questions, and the weakest theme, *Vivre dans la
+  société française*, is at about 60 %. Most of the remaining failures come from missing
+  content, not from the model — so the next lever is a second source, not a better prompt.
+- A first run scored 20 %: it revealed that the official PDF holds images and that the
+  assistant had been given an almost empty text. The OCR step and the start-up check in
+  `app.py` come from that finding.
 
 ## Next steps
 
-- [ ] Run the dev/test evaluation for both prompt versions and fill in the results
-- [ ] Add the Ministry's thematic sheets (Licence Etalab 2.0) as a second source
+- [x] Evaluate both prompt versions on dev and test sets
+- [ ] Add the Ministry's thematic sheets (Licence Etalab 2.0) as a second source,
+  to cover the questions the Livret misses
 - [ ] Deploy on Hugging Face Spaces
 
 ## Status

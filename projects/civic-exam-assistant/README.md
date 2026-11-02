@@ -144,8 +144,9 @@ What the numbers say:
   wording has reached a plateau.
 - **The Livret does not cover everything the exam asks.** By the judge's count it holds
   the answer to about 89 % of the test questions, and the weakest theme, *Vivre dans la
-  société française*, is at about 60 %. Most of the remaining failures come from missing
-  content, not from the model — so the next lever is a second source, not a better prompt.
+  société française*, is at about 60 %. About one question in ten cannot be answered
+  from the Livret at all, which caps what a Livret-only assistant can reach — so the next
+  lever is a second source rather than further prompt tweaks.
 - A first run scored 20 %: it revealed that the official PDF holds images and that the
   assistant had been given an almost empty text. The OCR step and the start-up check in
   `app.py` come from that finding.

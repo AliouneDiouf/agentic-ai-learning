@@ -74,41 +74,69 @@ python app.py
 with a stronger model acting as a judge (**LLM-as-a-judge**, with structured output).
 
 The question file lists, for each question, one or more correct answers. The judge
-compares the assistant's answer with them, and also checks whether the answer comes
-from the Livret. Each answer falls into one category:
+compares the assistant's answer with them, checks that it comes from the Livret, and
+accepts another answer when it is also right according to the Livret (several answers
+are often valid, e.g. when the question asks for an example). Each answer falls into one
+category:
 
 | Category | Meaning |
 |---|---|
 | `correct` | Right answer, taken from the Livret |
 | `correct_outside` | Right answer, but not in the Livret (outside knowledge) |
-| `incorrect` | Wrong answer |
+| `valid_other` | Right according to the Livret, but different from the reference |
+| `incorrect` | Wrong answer, or an answer to a different question |
 | `missed` | The Livret has the answer, the assistant says it cannot find it |
 | `not_in_livret` | The Livret does not cover the question, and the assistant says so |
-
-The report gives the **accuracy** against the reference answers, the accuracy using the
-Livret only, and how much of the exam the Livret covers, overall and by theme.
 
 The real exam is multiple choice, but the file only lists the right answers, so the
 assistant gets each question without the choices — a harder setting than the exam.
 
-To run it, download the JSON file from
+### Dev and test sets
+
+As with any model, tuning the prompt on the questions used for the final score would
+overfit it. The questions are split once: **1 in 5 goes to a dev set (42 questions)**,
+used to read errors and improve the prompt; **the other 167 form the test set**, run only
+to report scores.
+
+### Prompt versions
+
+- **v1** — the original prompt.
+- **v2** — adds a section on answering the exact question asked, giving complete answers
+  with the Livret's own key terms, and picking the most direct passage. It targets the two
+  failure modes seen on the dev set: answering a neighbouring question, and right but
+  incomplete answers.
+
+### Run it
+
+Download the JSON file from
 [data.gouv.fr](https://www.data.gouv.fr/datasets/examen-civique-cr/community-resources)
 (209 questions in 5 themes for the resident card, with suggested correct answers;
-Licence Ouverte 2.0, source: qcmexamencivique.fr),
-save it as `questions_cr.json` in this folder, then:
+Licence Ouverte 2.0, source: qcmexamencivique.fr), save it as `questions_cr.json` in
+this folder, then:
 
 ```bash
-python evaluate.py --limit 20   # quick first run
-python evaluate.py              # all questions
+python evaluate.py --split dev  --prompt v1   # study errors
+python evaluate.py --split test --prompt v1   # baseline score
+python evaluate.py --split dev  --prompt v2   # check the fix
+python evaluate.py --split test --prompt v2   # final score
 ```
 
-It writes `eval_report.md` (summary) and `eval_results.csv` (every answer and verdict).
+Each run writes `eval_<prompt>_<split>.md` (summary) and `.csv` (every answer and verdict).
 
 The judge is a model too: check a sample of its verdicts by hand before trusting the score.
 
+### Results
+
+| Prompt | Dev (42) | Test (167) |
+|---|---|---|
+| v1 | — | — |
+| v2 | — | — |
+
+*Accuracy: right answers (reference or other valid answer) / questions. Results to come.*
+
 ## Next steps
 
-- [ ] Run the full evaluation and publish `eval_report.md`
+- [ ] Run the dev/test evaluation for both prompt versions and fill in the results
 - [ ] Add the Ministry's thematic sheets (Licence Etalab 2.0) as a second source
 - [ ] Deploy on Hugging Face Spaces
 

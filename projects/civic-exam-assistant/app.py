@@ -43,7 +43,26 @@ def load_livret() -> str:
 
 livret = load_livret()
 
-system_prompt = f"""Tu es un assistant de révision pour l'examen civique français. \
+# v2 adds this section. It targets the two failure modes seen on the dev set:
+# answering a neighbouring question, and answers that are right but incomplete.
+ANSWER_PRECISELY = """## Bien répondre à la question posée
+- Relis la question avant de répondre et vérifie que ta réponse porte exactement \
+sur ce qui est demandé (qui, quoi, quand, combien, pourquoi), et non sur une question voisine.
+- Donne une réponse complète : reprends le terme clé ou la notion exacte qu'utilise \
+le Livret, et tous les éléments essentiels, pas seulement une partie.
+- Si plusieurs passages du Livret semblent proches, choisis celui qui répond le plus \
+directement à la question.
+- Si la question est un QCM, choisis la ou les bonnes propositions. Si on te demande \
+un exemple sans proposer de choix, donne d'abord l'exemple le plus courant et le plus simple.
+
+"""
+
+
+def build_system_prompt(version: str = "v2") -> str:
+    if version not in ("v1", "v2"):
+        raise ValueError(f"Unknown prompt version: {version}")
+    extra = ANSWER_PRECISELY if version == "v2" else ""
+    return f"""Tu es un assistant de révision pour l'examen civique français. \
 Tu aides des personnes qui préparent une démarche de naturalisation, de carte de séjour \
 pluriannuelle ou de carte de résident à comprendre les valeurs, l'histoire et les \
 institutions de la France.
@@ -66,7 +85,7 @@ qui te consultent n'ont pas le français comme langue maternelle.
 - Si la personne écrit dans une autre langue, réponds dans sa langue, \
 mais garde les termes officiels en français (par exemple « laïcité »).
 
-## Mode entraînement
+{extra}## Mode entraînement
 Si la personne te demande de l'interroger :
 - Pose une seule question à la fois, sous forme de QCM à quatre choix (A, B, C, D), \
 construite à partir du Livret.
@@ -87,6 +106,9 @@ délais, recours. Pour cela, oriente vers service-public.fr ou la préfecture.
 """
 
 
+system_prompt = build_system_prompt("v2")
+
+
 def to_text(content) -> str:
     """Convert a Gradio message content into plain text."""
     if isinstance(content, str):
@@ -96,12 +118,12 @@ def to_text(content) -> str:
     return str(content)
 
 
-def chat(message, history):
+def chat(message, history, prompt=None):
     # Keep only role and text: the OpenAI API rejects Gradio's extra fields
     clean_history = [{"role": h["role"], "content": to_text(h["content"])} for h in history]
 
     messages = (
-        [{"role": "system", "content": system_prompt}]
+        [{"role": "system", "content": prompt or system_prompt}]
         + clean_history
         + [{"role": "user", "content": message}]
     )

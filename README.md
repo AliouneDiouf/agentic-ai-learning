@@ -15,4 +15,6 @@ My learning log for agentic AI engineering.
 - [x] Week 6 – MCP
 
 ## Projects
-Links to standalone project repositories will be added here.
+- **[Civic Exam Assistant](projects/civic-exam-assistant)** — chat assistant for the French
+  civic exam, answering only from the official *Livret du citoyen*, with a quiz mode
+  and guardrails (OpenAI API, Gradio).

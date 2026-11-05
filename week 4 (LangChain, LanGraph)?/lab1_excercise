@@ -1,1 +1,53 @@
+myllm=ChatOpenAI(model="gpt-5", streaming=True)
+import requests
 
+@tool
+def get_temperature(city: str) -> dict:
+    """Donne la température actuelle (en °C) dans une ville.
+    Utilise cet outil dès qu'on te demande la météo ou la température d'un lieu."""
+    # 1. Trouver les coordonnées de la ville
+    geo = requests.get(
+        "https://geocoding-api.open-meteo.com/v1/search",
+        params={"name": city, "count": 1, "language": "fr", "format": "json"},
+        timeout=10,
+    ).json()
+    if not geo.get("results"):
+        return {"error": f"Ville introuvable : {city}"}
+    place = geo["results"][0]
+
+    # 2. Demander la météo actuelle à ces coordonnées
+    weather = requests.get(
+        "https://api.open-meteo.com/v1/forecast",
+        params={
+            "latitude": place["latitude"],
+            "longitude": place["longitude"],
+            "current": "temperature_2m,wind_speed_10m",
+        },
+        timeout=10,
+    ).json()
+    current = weather["current"]
+
+    return {
+        "ville": place["name"],
+        "pays": place.get("country"),
+        "temperature_c": current["temperature_2m"],
+        "vent_kmh": current["wind_speed_10m"],
+        "heure": current["time"],
+    }
+
+
+myllm_with_tools = myllm.bind_tools([get_temperature])
+#print(myllm_with_tools.invoke("Quelle est la température à Dakar?").tool_calls)
+conversation = [HumanMessage("What is the temperature of Dakar?")]
+ai_message = myllm_with_tools.invoke(conversation)
+conversation.append(ai_message)
+
+# Run each requested tool and add its result as a ToolMessage
+for call in ai_message.tool_calls:
+    if call["name"] == "get_temperature":
+        result = get_temperature.invoke(call["args"])
+        conversation.append(ToolMessage(content=str(result),  tool_call_id=call["id"]))
+
+# Invoke again, now that the model can see the tool result
+final = myllm_with_tools.invoke(conversation)
+print(final.content)

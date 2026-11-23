@@ -1,0 +1,7 @@
+langchain-core>=1.0
+langchain-openai>=1.0
+langchain-pinecone>=0.2
+langchain-text-splitters>=1.0
+pinecone>=7.0
+pypdf>=5.0
+python-dotenv>=1.0

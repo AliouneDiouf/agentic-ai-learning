@@ -18,3 +18,5 @@ My learning log for agentic AI engineering.
 - **[Civic Exam Assistant](projects/civic-exam-assistant)** — chat assistant for the French
   civic exam, answering only from the official *Livret du citoyen*, with a quiz mode
   and guardrails (OpenAI API, Gradio).
+- **[AI Act RAG](projects/ai-act-rag)** — question answering over the EU AI Act PDF,
+  with page-level citations (LangChain, LCEL, OpenAI embeddings, Pinecone).
